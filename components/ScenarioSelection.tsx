@@ -25,7 +25,7 @@ const ScenarioCard: React.FC<{
         onKeyPress={(e) => e.key === 'Enter' && onSelect()}
         style={{
             animationDelay: `${index * 150}ms`,
-            '--genre-color': details.color, // CSS variable for hover/focus
+            ['--genre-color' as any]: details.color, // CSS variable for hover/focus
         } as React.CSSProperties}
     >
         <style>{`

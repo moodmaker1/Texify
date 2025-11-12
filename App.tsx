@@ -10,7 +10,7 @@ import { generateGameResponse, generateImage, enhanceImagePrompt } from './servi
 import ScenarioSelection from './components/ScenarioSelection';
 import GameScreen from './components/GameScreen';
 
-function App() {
+const App: React.FC = () => {
   const [scenario, setScenario] = useState<Scenario | null>(null);
   const [gameHistory, setGameHistory] = useState<{ role: string, parts: { text: string }[] }[]>([]);
   const [currentGameState, setCurrentGameState] = useState<GameState | null>(null);
@@ -138,6 +138,6 @@ function App() {
       </div>
     </div>
   );
-}
+};
 
 export default App;

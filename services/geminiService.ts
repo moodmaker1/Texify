@@ -1,10 +1,10 @@
-import { GoogleGenAI, Type, Modality } from '@google/genai';
+import { GoogleGenAI, Type } from '@google/genai';
 import { GameState, Scenario } from '../types';
 import { AI_MASTER_PROMPT, IMAGE_PROMPT_ENHANCEMENT_PROMPT } from '../constants';
 
-const API_KEY = process.env.API_KEY;
-if (!API_KEY) {
-  throw new Error("API_KEY environment variable not set");
+const API_KEY = process.env.API_KEY || process.env.GEMINI_API_KEY;
+if (!API_KEY || API_KEY === 'PLACEHOLDER_API_KEY') {
+  throw new Error("유효한 GEMINI_API_KEY를 .env.local 파일에 설정해주세요.");
 }
 
 const ai = new GoogleGenAI({ apiKey: API_KEY });
@@ -146,25 +146,24 @@ export async function enhanceImagePrompt(
 
 export async function generateImage(prompt: string): Promise<string> {
   try {
-    const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash-image',
-        contents: {
-            parts: [{ text: prompt }],
-        },
+    const response = await ai.models.generateImages({
+        model: 'imagen-4.0-generate-001',
+        prompt: prompt,
         config: {
-            responseModalities: [Modality.IMAGE],
+          numberOfImages: 1,
+          outputMimeType: 'image/jpeg',
+          aspectRatio: '16:9',
         },
     });
 
-    for (const part of response.candidates?.[0]?.content?.parts || []) {
-        if (part.inlineData) {
-            const base64ImageBytes: string = part.inlineData.data;
-            return `data:image/png;base64,${base64ImageBytes}`;
-        }
+    if (response.generatedImages && response.generatedImages.length > 0) {
+        const base64ImageBytes: string = response.generatedImages[0].image.imageBytes;
+        return `data:image/jpeg;base64,${base64ImageBytes}`;
     }
+    
     throw new Error("No image data found in response");
   } catch (error) {
     console.error('Error generating image:', error);
-    return "https://picsum.photos/seed/error/1024/768";
+    return "https://picsum.photos/seed/error/1024/576"; // 16:9 aspect ratio for error image
   }
 }
