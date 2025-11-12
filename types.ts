@@ -22,6 +22,11 @@ export interface GameState {
   imageUrl?: string;
 }
 
+export interface GameHistoryEntry {
+  playerAction: string;
+  gameState: GameState;
+}
+
 export interface ScenarioDetails {
   id: Scenario;
   title: string;
