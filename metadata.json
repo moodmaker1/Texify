@@ -1,0 +1,5 @@
+{
+  "name": "Textify: AI Story Weaver",
+  "description": "An interactive text-based simulation game where your choices dynamically shape the story. Powered by an AI Game Master, you can select from horror, thriller, or romance scenarios and navigate the narrative with complete freedom. Every action you type generates a new part of the story, a unique image for the scene, and updates your character's stats.",
+  "requestFramePermissions": []
+}
