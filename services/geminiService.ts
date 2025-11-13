@@ -32,7 +32,6 @@ async function retryWithBackoff<T>(
       
       // 지수 백오프: 3초, 6초, 12초...
       const waitTime = delay * Math.pow(2, i);
-      console.log(`⏳ 서버 과부하 감지. ${waitTime/1000}초 후 재시도 (${i + 1}/${maxRetries})...`);
       await new Promise(resolve => setTimeout(resolve, waitTime));
     }
   }
@@ -42,34 +41,47 @@ async function retryWithBackoff<T>(
 const createGameStateSchema = (scenario: Scenario) => {
   let statsProperties: Record<string, { type: Type }> = {};
   let statsRequired: string[] = [];
+  let statChangesProperties: Record<string, { type: Type }> = {};
 
   switch (scenario) {
     case Scenario.Horror:
       statsProperties = {
         '정신력': { type: Type.NUMBER },
         '체력': { type: Type.NUMBER },
-        '시간': { type: Type.STRING },
         '공포도': { type: Type.NUMBER },
       };
-      statsRequired = ['정신력', '체력', '시간', '공포도'];
+      statsRequired = ['정신력', '체력', '공포도'];
+      statChangesProperties = {
+        '정신력': { type: Type.NUMBER },
+        '체력': { type: Type.NUMBER },
+        '공포도': { type: Type.NUMBER },
+      };
       break;
     case Scenario.Thriller:
       statsProperties = {
+        '정신력': { type: Type.NUMBER },
         '체력': { type: Type.NUMBER },
-        '신뢰도': { type: Type.NUMBER },
-        '시간': { type: Type.STRING },
-        '생존 인질': { type: Type.NUMBER },
+        '긴장도': { type: Type.NUMBER },
       };
-      statsRequired = ['체력', '신뢰도', '시간', '생존 인질'];
+      statsRequired = ['정신력', '체력', '긴장도'];
+      statChangesProperties = {
+        '정신력': { type: Type.NUMBER },
+        '체력': { type: Type.NUMBER },
+        '긴장도': { type: Type.NUMBER },
+      };
       break;
     case Scenario.Romance:
       statsProperties = {
-        '설렘도': { type: Type.NUMBER },
         '용기': { type: Type.NUMBER },
-        '시간': { type: Type.STRING },
         '호감도': { type: Type.NUMBER },
+        '자신감': { type: Type.NUMBER },
       };
-      statsRequired = ['설렘도', '용기', '시간', '호감도'];
+      statsRequired = ['용기', '호감도', '자신감'];
+      statChangesProperties = {
+        '용기': { type: Type.NUMBER },
+        '호감도': { type: Type.NUMBER },
+        '자신감': { type: Type.NUMBER },
+      };
       break;
   }
 
@@ -90,6 +102,58 @@ const createGameStateSchema = (scenario: Scenario) => {
         properties: statsProperties,
         required: statsRequired,
       },
+      suggested_actions: {
+        type: Type.ARRAY,
+        description: '추천 선택지 3개 (A, B, C)',
+        items: {
+          type: Type.OBJECT,
+          properties: {
+            id: {
+              type: Type.STRING,
+              description: '선택지 ID (A, B, C)',
+            },
+            emoji: {
+              type: Type.STRING,
+              description: '이모지',
+            },
+            text: {
+              type: Type.STRING,
+              description: '행동 설명',
+            },
+            required_stats: {
+              type: Type.OBJECT,
+              description: '필요한 스탯 조건',
+              properties: statsProperties,
+              nullable: true,
+            },
+            stat_changes: {
+              type: Type.OBJECT,
+              description: '스탯 변화량 (선택 후 적용, UI에 표시 안 함)',
+              properties: statChangesProperties,
+            },
+            is_trap: {
+              type: Type.BOOLEAN,
+              description: '트랩 여부',
+            },
+            trap_ending: {
+              type: Type.OBJECT,
+              description: '트랩 엔딩 (트랩일 경우 필수)',
+              properties: {
+                title: {
+                  type: Type.STRING,
+                  description: '엔딩 제목',
+                },
+                description: {
+                  type: Type.STRING,
+                  description: '엔딩 설명',
+                },
+              },
+              nullable: true,
+            },
+          },
+          required: ['id', 'emoji', 'text', 'stat_changes', 'is_trap'],
+        },
+      },
       analysis: {
         type: Type.OBJECT,
         properties: {
@@ -109,7 +173,7 @@ const createGameStateSchema = (scenario: Scenario) => {
         description: '진행중 또는 엔딩명',
       },
     },
-    required: ['narrative', 'image_prompt', 'stats', 'analysis', 'ending_check'],
+    required: ['narrative', 'image_prompt', 'stats', 'suggested_actions', 'analysis', 'ending_check'],
   };
 };
 
@@ -123,10 +187,9 @@ export async function generateGameResponse(
   userPrompt: string,
   scenario: Scenario
 ): Promise<GameState> {
-  // Flash 모델로 먼저 시도 (더 빠르고 안정적)
+  // Flash 모델로 먼저 시도 (더 빠르고 저렴)
   try {
     return await retryWithBackoff(async () => {
-      console.log('⚡ Gemini Flash 모델로 스토리 생성 중...');
       
       const contents = constructPrompt(history, userPrompt);
       const gameStateSchema = createGameStateSchema(scenario);
@@ -151,47 +214,13 @@ export async function generateGameResponse(
       const text = responseText.trim();
       const cleanJsonText = text.replace(/^```json\s*|```\s*$/g, '');
       const parsedResponse = JSON.parse(cleanJsonText);
-      console.log('✅ Flash 모델로 스토리 생성 성공!');
+      
       return parsedResponse as GameState;
-    }, 3, 3000); // 3번 재시도, 3초부터 시작
+    }, 1, 2000); // 재시도 1회로 줄임 (API 절약)
   } catch (flashError) {
-    console.warn('⚠️ Flash 모델 실패, Pro 모델로 전환 중...');
-    
-    // Flash 모델 실패 시에만 Pro 모델로 폴백
-    try {
-      return await retryWithBackoff(async () => {
-        console.log('🎮 Gemini Pro 모델로 스토리 생성 중...');
-        
-        const contents = constructPrompt(history, userPrompt);
-        const gameStateSchema = createGameStateSchema(scenario);
-        
-        const response = await ai.models.generateContent({
-          model: 'gemini-2.5-pro',
-          contents: contents,
-          config: {
-            systemInstruction: AI_MASTER_PROMPT,
-            responseMimeType: 'application/json',
-            responseSchema: gameStateSchema,
-            temperature: 0.8,
-            topP: 0.9,
-          },
-        });
-
-        if (!response || !response.text) {
-          throw new Error('Invalid response from API');
-        }
-
-        const responseText = response.text;
-        const text = responseText.trim();
-        const cleanJsonText = text.replace(/^```json\s*|```\s*$/g, '');
-        const parsedResponse = JSON.parse(cleanJsonText);
-        console.log('✅ Pro 모델로 스토리 생성 성공!');
-        return parsedResponse as GameState;
-      }, 2, 5000); // Pro는 2번만 재시도, 5초 간격
-    } catch (proError) {
-      console.error('❌ 두 모델 모두 실패:', proError);
-      throw new Error('🔄 AI 서버가 현재 과부하 상태입니다. 잠시 후 다시 시도해주세요. (추천: 한국 낮 시간대 이용)');
-    }
+    // Flash 실패 시 바로 오류 반환 (Pro 시도 안 함 - API 절약)
+    console.error('❌ 스토리 생성 실패:', flashError);
+    throw new Error('🔄 AI 서버가 현재 바쁩니다. 잠시 후 다시 시도해주세요.');
   }
 }
 
@@ -238,39 +267,69 @@ export async function enhanceImagePrompt(
         console.error('Error enhancing image prompt:', error);
         return basePrompt;
       }
-    }, 2, 1000); // 2번 재시도, 1초부터 시작
+    }, 2, 1000);
 }
 
-export async function generateImage(prompt: string): Promise<string> {
-  try {
-    return await retryWithBackoff(async () => {
-      console.log('🎨 이미지 생성 중...');
-      
+export async function generateImage(prompt: string, scenario: Scenario): Promise<string> {
+  const placeholderMap: Record<Scenario, string> = {
+    [Scenario.Horror]: '/horror-thumbnail.png',
+    [Scenario.Thriller]: '/thriller-thumbnail.png',
+    [Scenario.Romance]: '/romance-thumbnail.png',
+  };
+  
+  // 재시도 로직 포함 (2회 시도, 10초 간격)
+  return await retryWithBackoff(async () => {
+    try {
+      // Gemini Imagen 시도
       const response = await ai.models.generateImages({
-          model: 'imagen-4.0-generate-001',
-          prompt: prompt,
-          config: {
-            numberOfImages: 1,
-            outputMimeType: 'image/jpeg',
-            aspectRatio: '16:9',
-          },
+        model: 'imagen-4.0-generate-001',
+        prompt: prompt,
+        config: {
+          numberOfImages: 1,
+          outputMimeType: 'image/jpeg',
+          aspectRatio: '16:9',
+        },
       });
 
-      if (response.generatedImages && response.generatedImages.length > 0) {
-          const imageData = response.generatedImages[0].image;
-          if (imageData && imageData.imageBytes) {
-            const base64ImageBytes: string = imageData.imageBytes;
-            console.log('✅ 이미지 생성 성공!');
-            return `data:image/jpeg;base64,${base64ImageBytes}`;
+      if (!response || !response.generatedImages || response.generatedImages.length === 0) {
+        throw new Error('No generated images in response');
+      }
+
+      const imageData = response.generatedImages[0];
+      const imageDataAny = imageData as any;
+      let base64Data: string | null = null;
+      
+      if (imageData.image?.imageBytes) {
+        base64Data = imageData.image.imageBytes;
+      } else if (imageDataAny.imageBytes) {
+        base64Data = imageDataAny.imageBytes;
+      } else if (imageDataAny.bytesBase64Encoded) {
+        base64Data = imageDataAny.bytesBase64Encoded;
+      } else if (typeof imageData === 'string') {
+        base64Data = imageData as string;
+      } else {
+        for (const [_, value] of Object.entries(imageData)) {
+          if (typeof value === 'string' && value.length > 100) {
+            base64Data = value;
+            break;
           }
+        }
       }
       
-      throw new Error("No image data found in response");
-    }, 2, 2000); // 2번 재시도, 2초부터 시작
-  } catch (error) {
-    console.error('❌ 이미지 생성 실패:', error);
-    console.log('🖼️ Placeholder 이미지 사용');
-    // 이미지 생성 실패 시 아름다운 placeholder 사용
-    return "https://images.unsplash.com/photo-1579546929518-9e396f3cc809?w=1024&h=576&fit=crop&q=80";
-  }
+      if (base64Data) {
+        console.log('✅ Gemini 이미지 생성 성공');
+        return `data:image/jpeg;base64,${base64Data}`;
+      }
+      
+      throw new Error('No image data found');
+      
+    } catch (error) {
+      console.log('⚠️ 이미지 생성 시도 실패, 재시도 중...');
+      throw error; // retryWithBackoff가 재시도
+    }
+  }, 2, 10000).catch(() => {
+    // 모든 재시도 실패 시 placeholder
+    console.log('💾 이미지 생성 완전 실패, placeholder 사용');
+    return placeholderMap[scenario] || '/horror-thumbnail.png';
+  });
 }
