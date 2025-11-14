@@ -347,21 +347,25 @@ export async function generateImage(prompt: string, scenario: Scenario): Promise
     [Scenario.Romance]: '/romance-thumbnail.png',
   };
   
+  console.log('🎨 이미지 생성 시작:', prompt.substring(0, 50) + '...');
+  
   // 재시도 로직 포함 (2회 시도, 10초 간격)
   return await retryWithBackoff(async () => {
     try {
-      // Gemini Imagen 시도 (고품질 모델)
+      // Imagen 4 모델 사용 (고품질)
+      console.log('📞 API 호출 중... model: imagen-4.0-generate-001');
       const response = await ai.models.generateImages({
         model: 'imagen-4.0-generate-001',
         prompt: prompt,
         config: {
           numberOfImages: 1,
-          outputMimeType: 'image/jpeg',
           aspectRatio: '16:9',
         },
       });
+      console.log('📞 API 호출 완료');
 
       if (!response || !response.generatedImages || response.generatedImages.length === 0) {
+        console.error('❌ 응답에 이미지 없음');
         throw new Error('No generated images in response');
       }
 
@@ -369,6 +373,7 @@ export async function generateImage(prompt: string, scenario: Scenario): Promise
       const imageDataAny = imageData as any;
       let base64Data: string | null = null;
       
+      // 다양한 응답 형식 처리
       if (imageData.image?.imageBytes) {
         base64Data = imageData.image.imageBytes;
       } else if (imageDataAny.imageBytes) {
@@ -387,12 +392,11 @@ export async function generateImage(prompt: string, scenario: Scenario): Promise
       }
       
       if (base64Data) {
-        console.log('✅ Gemini 이미지 생성 성공');
+        console.log('✅ Imagen 이미지 생성 성공');
         return `data:image/jpeg;base64,${base64Data}`;
       }
       
       throw new Error('No image data found');
-      
     } catch (error) {
       console.log('⚠️ 이미지 생성 시도 실패, 재시도 중...');
       throw error; // retryWithBackoff가 재시도

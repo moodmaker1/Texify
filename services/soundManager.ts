@@ -2,7 +2,7 @@ import { Howl } from 'howler';
 import type { Scenario } from '../types';
 
 type BGMType = 'horror' | 'thriller' | 'romance' | 'front';
-type SoundEffect = 'opening_door' | 'timer_timeout' | 'game_over' | 'action_submit' | 'modal_open' | 'modal_close';
+type SoundEffect = 'opening_door' | 'timer_timeout' | 'timer_warning' | 'game_over' | 'action_submit' | 'modal_open' | 'modal_close';
 
 /**
  * 사운드 매니저 - 완전히 새로 작성 (깔끔한 버전)
@@ -25,6 +25,7 @@ class SoundManager {
   
   // AudioContext unlock 상태
   private isAudioUnlocked: boolean = false;
+  private pendingBGM: BGMType | null = null;
 
   private constructor() {
     this.loadAllSounds();
@@ -91,6 +92,7 @@ class SoundManager {
     });
 
     this.sfxTracks.set('timer_timeout', dummySFX);
+    this.sfxTracks.set('timer_warning', dummySFX);
     this.sfxTracks.set('game_over', dummySFX);
     this.sfxTracks.set('action_submit', dummySFX);
     this.sfxTracks.set('modal_open', dummySFX);
@@ -117,11 +119,14 @@ class SoundManager {
       silentSound.once('play', () => {
         this.isAudioUnlocked = true;
         console.log('✅ Audio context unlocked!');
-        
-        // front BGM 자동 재생
-        this.playBGM('front');
-        
         silentSound.unload();
+        
+        // 🆕 unlock 후 대기 중인 BGM이 있으면 재생
+        if (this.pendingBGM) {
+          console.log(`▶️ Playing pending BGM: ${this.pendingBGM}`);
+          this.playBGM(this.pendingBGM);
+          this.pendingBGM = null;
+        }
       });
 
       silentSound.play();
@@ -141,6 +146,13 @@ class SoundManager {
 
     if (!bgm) {
       console.error(`❌ BGM not found: ${bgmType}`);
+      return;
+    }
+
+    // 🆕 오디오가 아직 unlock되지 않았으면 대기
+    if (!this.isAudioUnlocked) {
+      console.log(`⏳ Audio not unlocked yet, pending BGM: ${bgmType}`);
+      this.pendingBGM = bgmType;
       return;
     }
 
@@ -168,7 +180,7 @@ class SoundManager {
   }
 
   /**
-   * BGM 정지
+   * BGM 정지 (fade-out 포함)
    */
   public stopBGM() {
     if (this.currentBGM) {
@@ -178,7 +190,19 @@ class SoundManager {
         this.currentBGM = null;
         this.currentBGMType = null;
       }, 1000);
-      console.log('⏹️ Stopping BGM');
+      console.log('⏹️ Stopping BGM (with fade)');
+    }
+  }
+
+  /**
+   * BGM 즉시 정지 (fade-out 없이)
+   */
+  public stopBGMImmediate() {
+    if (this.currentBGM) {
+      this.currentBGM.stop();
+      this.currentBGM = null;
+      this.currentBGMType = null;
+      console.log('⏹️ Stopping BGM (immediate)');
     }
   }
 

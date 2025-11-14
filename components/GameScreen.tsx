@@ -3,7 +3,6 @@ import { Scenario, GameState, Stats, GameHistoryEntry, SuggestedAction, StatChan
 import TimerProgressBar from './TimerProgressBar';
 import TypewriterText from './TypewriterText';
 import { soundManager } from '../services/soundManager';
-import ActionChoice from './ActionChoice';
 import StatChangeCard from './StatChangeCard';
 import SoundControl from './SoundControl';
 
@@ -20,6 +19,7 @@ interface GameScreenProps {
   isTimerActive: boolean;
   recentStatChanges: StatChangeInfo | null;
   onStatChangeComplete: () => void;
+  turnCount: number;
 }
 
 const LoadingSpinner: React.FC = () => (
@@ -28,46 +28,18 @@ const LoadingSpinner: React.FC = () => (
     </div>
 );
 
-const GameImage: React.FC<{ imageUrl?: string, prompt?: string, scenario: Scenario, timeRemaining: number, isTimerActive: boolean }> = ({ imageUrl, prompt, scenario, timeRemaining, isTimerActive }) => (
-    <div className="relative aspect-video bg-slate-900/50 backdrop-blur-sm rounded-2xl overflow-hidden shadow-2xl shadow-purple-900/50 mb-6 border border-purple-500/30">
-        {!imageUrl ? (
-            <div className="w-full h-full flex flex-col justify-center items-center text-purple-200">
-                <LoadingSpinner />
-                <p className="mt-4 text-sm">이미지 생성 중...</p>
-            </div>
-        ) : (
-            <img src={imageUrl} alt={prompt || "Scene image"} className="w-full h-full object-cover" />
-        )}
-    </div>
-);
-
-const StatsDisplay: React.FC<{ stats: Stats }> = ({ stats }) => (
-    <div className="bg-gradient-to-br from-indigo-900/70 to-purple-900/70 backdrop-blur-md p-5 rounded-2xl mb-6 shadow-2xl shadow-purple-500/30 border-2 border-purple-400/30">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
-            {Object.entries(stats).map(([key, value]) => (
-                <div key={key} className="bg-indigo-950/60 rounded-xl p-3 border border-cyan-400/30">
-                    <p className="text-xs text-cyan-300 font-semibold mb-1">{key}</p>
-                    <p className="text-xl font-bold text-purple-100">{value}</p>
-                </div>
-            ))}
-        </div>
-    </div>
-);
-
-const NarrativePanel: React.FC<{ narrative: string }> = ({ narrative }) => (
-    <div className="bg-white p-6 rounded-lg mb-6 text-gray-800 leading-relaxed shadow-md border border-gray-200">
-        <p>{narrative}</p>
-    </div>
-);
-
-const HistoryItem: React.FC<{ 
-    entry: GameHistoryEntry; 
-    isFirst: boolean; 
+const HistoryItem: React.FC<{
+    entry: GameHistoryEntry;
+    isFirst: boolean;
     isLatest: boolean;
     scenario: Scenario;
     timeRemaining: number;
     isTimerActive: boolean;
-}> = ({ entry, isFirst, isLatest, scenario, timeRemaining, isTimerActive }) => {
+    turnCount: number;
+    currentStats?: Stats;
+    onActionSelect?: (action: SuggestedAction) => void;
+    isLoading?: boolean;
+}> = ({ entry, isFirst, isLatest, scenario, timeRemaining, isTimerActive, currentStats, onActionSelect, isLoading }) => {
     const itemRef = useRef<HTMLDivElement>(null);
     const isGameOver = entry.gameState.ending_check !== '진행중';
 
@@ -93,55 +65,8 @@ const HistoryItem: React.FC<{
                 </div>
             )}
             
-            {/* 이미지 + 스탯 그리드 */}
-            <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 mb-4">
-                {/* 이미지 - 왼쪽 3칸럼 (3/4) */}
-                {entry.gameState.imageUrl && (
-                    <div className="lg:col-span-3 relative aspect-video bg-indigo-950/60 backdrop-blur-md rounded-2xl overflow-hidden shadow-2xl shadow-purple-500/30 border-2 border-purple-400/30">
-                        <img 
-                            src={entry.gameState.imageUrl} 
-                            alt={entry.gameState.image_prompt || "Scene image"} 
-                            className="w-full h-full object-cover"
-                            onError={(e) => {
-                                // 이미지 로딩 실패 시 placeholder로 즉시 교체
-                                const placeholders: Record<string, string> = {
-                                    'Horror': '/horror-thumbnail.png',
-                                    'Thriller': '/thriller-thumbnail.png',
-                                    'Romance': '/romance-thumbnail.png',
-                                };
-                                const placeholder = placeholders[scenario] || '/horror-thumbnail.png';
-                                (e.target as HTMLImageElement).src = placeholder;
-                                console.log('⚠️ 이미지 로드 실패, placeholder로 교체');
-                            }}
-                        />
-                    </div>
-                )}
-                
-                {/* 스탯 - 오른쪽 1칸럼 (1/4) */}
-                <div className={entry.gameState.imageUrl ? "lg:col-span-1" : "lg:col-span-4"}>
-                    <div className="bg-gradient-to-br from-indigo-900/70 to-purple-900/70 backdrop-blur-md p-5 rounded-2xl shadow-2xl shadow-purple-500/30 border-2 border-purple-400/30 h-full">
-                        <h3 className="text-lg font-bold text-cyan-300 mb-4 text-center">상태</h3>
-                        <div className={`grid gap-3 ${entry.gameState.imageUrl ? 'grid-cols-1' : 'grid-cols-2 md:grid-cols-4'}`}>
-                            {Object.entries(entry.gameState.stats).map(([key, value], index) => (
-                                <div key={`stat-${key}-${index}`} className="bg-indigo-950/60 rounded-xl p-3 border border-cyan-400/30">
-                                    <p className="text-xs text-cyan-300 font-semibold mb-1">{key}</p>
-                                    <p className="text-2xl font-bold text-purple-100">{value}</p>
-                                    {/* 프로그레스 바 */}
-                                    <div className="mt-2 h-2 bg-indigo-950 rounded-full overflow-hidden border border-purple-400/20">
-                                        <div 
-                                            className="h-full bg-gradient-to-r from-cyan-400 to-purple-400 rounded-full transition-all duration-500 shadow-lg shadow-cyan-400/50"
-                                            style={{ width: `${Math.min(100, Math.max(0, value))}%` }}
-                                        />
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                </div>
-            </div>
-            
-            {/* 🆕 Chapter 진행도 표시 (이미지 바로 아래, 작게) */}
-            {isLatest && entry.gameState.stage_progress && !isGameOver && (
+            {/* 🆕 Chapter 진행도 (이미지 위) */}
+            {isLatest && !isGameOver && entry.gameState.stage_progress && (
                 <div className="mb-4 bg-gradient-to-r from-indigo-900/60 to-purple-900/60 backdrop-blur-md rounded-xl px-4 py-3 border border-purple-400/30 shadow-lg shadow-purple-500/20">
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
@@ -181,27 +106,173 @@ const HistoryItem: React.FC<{
                 </div>
             )}
             
-            {/* 스토리 */}
-            <div className="bg-gradient-to-br from-indigo-900/60 to-purple-900/60 backdrop-blur-md p-6 rounded-2xl text-purple-100 leading-relaxed shadow-xl shadow-purple-500/30 border-2 border-purple-400/20 mb-4">
+            {/* 🆕 이미지(60%) + 선택지(40%) 좌우 분할 */}
+            <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 mb-4">
+                {/* 왼쪽: 이미지 (3/5 = 60%) - 항상 표시 */}
+                <div className="lg:col-span-3 relative aspect-video bg-indigo-950/60 backdrop-blur-md rounded-2xl overflow-hidden shadow-2xl shadow-purple-500/30 border-2 border-purple-400/30">
+                    {entry.gameState.imageUrl ? (
+                        <img 
+                            src={entry.gameState.imageUrl} 
+                            alt={entry.gameState.image_prompt || "Scene image"} 
+                            className="w-full h-full object-cover"
+                            onError={(e) => {
+                                const placeholders: Record<string, string> = {
+                                    'Horror': '/horror-thumbnail.png',
+                                    'Thriller': '/thriller-thumbnail.png',
+                                    'Romance': '/romance-thumbnail.png',
+                                };
+                                const placeholder = placeholders[scenario] || '/horror-thumbnail.png';
+                                (e.target as HTMLImageElement).src = placeholder;
+                                console.log('⚠️ 이미지 로드 실패, placeholder로 교체');
+                            }}
+                        />
+                    ) : (
+                        <div className="w-full h-full flex flex-col justify-center items-center text-purple-200">
+                            <LoadingSpinner />
+                            <p className="mt-4 text-sm">이미지 생성 중...</p>
+                        </div>
+                    )}
+                </div>
+                
+                {/* 오른쪽: 선택지 (2/5 = 40%) - 항상 표시, 선택한 것은 어둡게 */}
+                {entry.suggestedActions && entry.suggestedActions.length > 0 ? (
+                    <div className="lg:col-span-2">
+                        <div className="bg-gradient-to-br from-purple-900/80 to-indigo-900/80 backdrop-blur-md p-5 rounded-2xl shadow-2xl shadow-purple-500/30 border-2 border-purple-500/40 h-full overflow-y-auto max-h-[600px]">
+                            <h3 className="text-xl font-bold text-purple-200 mb-4 text-center pb-3 border-b-2 border-purple-500/50">
+                                어떻게 하시겠습니까?
+                            </h3>
+                            {/* 선택지 버튼들 */}
+                            <div className="space-y-3">
+                                {entry.suggestedActions.map((action, index) => {
+                                    const letters = ['A', 'B', 'C', 'D', 'E'];
+                                    
+                                    // 이전 턴에서 선택한 행동인지 확인
+                                    // playerAction에 action.text가 포함되어 있는지 확인
+                                    const isSelected = !isFirst && (
+                                        entry.playerAction.includes(action.text) ||
+                                        entry.playerAction.includes(`${action.emoji} ${action.text}`)
+                                    );
+                                    
+                                    // 🔍 디버그 로그
+                                    console.log(`🔍 [${letters[index]}] ${isSelected ? '✅✅✅ 선택됨' : '선택안됨'} | "${entry.playerAction}" vs "${action.text}"`);
+                                    
+                                    // 스탯 충족 여부 확인 (최신 턴일 때만)
+                                    const canPerform = isLatest && (!action.required_stats || Object.entries(action.required_stats).every(
+                                        ([stat, required]) => (currentStats?.[stat] || 0) >= required
+                                    ));
+                                    
+                                    // 최신 턴인지 확인
+                                    const isClickable = isLatest && !isGameOver && canPerform && !isLoading;
+                                    
+                                    return (
+                                        <button
+                                            key={index}
+                                            onClick={() => {
+                                                if (isClickable && onActionSelect) {
+                                                    console.log('🎮 선택지 클릭:', action.text);
+                                                    onActionSelect(action);
+                                                }
+                                            }}
+                                            disabled={!isClickable}
+                                            className={`
+                                                w-full text-left p-4 rounded-xl transition-all duration-200 border-2
+                                                ${isSelected 
+                                                    ? 'bg-purple-950/70 border-purple-600/40 opacity-60 cursor-default' 
+                                                    : isClickable
+                                                    ? 'bg-purple-800/60 hover:bg-purple-700/70 border-purple-400/60 hover:border-purple-300 hover:shadow-lg hover:shadow-purple-400/40 active:scale-95 active:bg-purple-600 cursor-pointer' 
+                                                    : 'bg-purple-900/40 border-purple-600/40 opacity-50 cursor-default'
+                                                }
+                                            `}
+                                        >
+                                            <div className="flex items-start gap-3">
+                                                <span className={`font-bold text-lg flex-shrink-0 ${isSelected ? 'text-purple-400' : 'text-purple-300'}`}>
+                                                    {letters[index]}
+                                                </span>
+                                                <div className="flex-1">
+                                                    <p className={`text-base font-medium leading-relaxed ${isSelected ? 'text-purple-300' : 'text-purple-100'}`}>
+                                                        {action.text}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            {!canPerform && isLatest && !isGameOver && action.required_stats && (
+                                                <p className="text-sm text-red-300 mt-3 ml-8">
+                                                    ⚠️ 스탯이 부족합니다
+                                                </p>
+                                            )}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    </div>
+                ) : (
+                    <div className="lg:col-span-2 flex items-center justify-center">
+                        <p className="text-purple-300 text-sm italic">선택지 로딩 중...</p>
+                    </div>
+                )}
+            </div>
+            
+            {/* 🆕 스토리 텍스트 (타이머 위로 이동) */}
+            <div className="bg-gradient-to-br from-indigo-900/60 to-purple-900/60 backdrop-blur-md p-8 rounded-2xl text-purple-100 leading-relaxed shadow-xl shadow-purple-500/30 border-2 border-purple-400/20 mb-4">
+                <h3 className="text-xl font-bold text-cyan-300 mb-4 flex items-center gap-2">
+                    <span>📖</span>
+                    <span>스토리</span>
+                </h3>
                 {isLatest ? (
                     <TypewriterText 
                         text={entry.gameState.narrative}
                         speed={30}
-                        className=""
+                        className="text-lg"
                     />
                 ) : (
-                    <p>{entry.gameState.narrative}</p>
+                    <p className="text-lg">{entry.gameState.narrative}</p>
                 )}
             </div>
             
-            {/* 타이머 - 스토리와 선택지 사이 (게임 오버가 아닐 때만) */}
+            {/* 🆕 타이머 경고 (스토리 아래) */}
             {isLatest && !isGameOver && (
-                <div className="mb-6">
+                <div className="mb-4">
                     <TimerProgressBar 
                         scenario={scenario}
                         timeRemaining={timeRemaining}
                         isActive={isTimerActive}
                     />
+                </div>
+            )}
+            
+            {/* 🆕 상태 + 진실조각 + TRUE 엔딩 (크기 확대) */}
+            {isLatest && !isGameOver && (
+                <div className="mb-4 bg-indigo-900/50 backdrop-blur-md rounded-xl px-6 py-4 border border-purple-400/30 shadow-lg shadow-purple-500/20">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-base">
+                        {/* 첫 번째 줄: 스탯 */}
+                        <div className="flex items-center gap-4 text-purple-100">
+                            <span className="font-bold text-cyan-300 text-lg">📊 상태:</span>
+                            {Object.entries(entry.gameState.stats).map(([key, value], index) => (
+                                <span key={`stat-${key}-${index}`} className="flex items-center gap-1.5">
+                                    <span className="text-sm font-medium">{key}</span>
+                                    <span className="font-bold text-purple-100 text-lg">{value}</span>
+                                    {index < Object.entries(entry.gameState.stats).length - 1 && <span className="text-purple-400 mx-1">|</span>}
+                                </span>
+                            ))}
+                        </div>
+                        
+                        {/* 두 번째 줄: 진실조각 + TRUE 엔딩 */}
+                        {entry.gameState.truth_fragments && entry.gameState.truth_fragments.total > 0 && (
+                            <div className="flex items-center gap-4 text-purple-100">
+                                <span className="flex items-center gap-2">
+                                    <span className="text-cyan-300 font-bold text-lg">🔍 진실조각:</span>
+                                    <span className="font-bold text-lg">{entry.gameState.truth_fragments.discovered.length}/{entry.gameState.truth_fragments.total}</span>
+                                </span>
+                                <span className="text-purple-400 mx-1">|</span>
+                                <span className="flex items-center gap-2">
+                                    <span className="text-yellow-300 font-bold text-lg">🏆 TRUE 엔딩:</span>
+                                    <span className="font-bold text-lg">
+                                        {Math.round((entry.gameState.truth_fragments.discovered.length / entry.gameState.truth_fragments.total) * 100)}%
+                                    </span>
+                                </span>
+                            </div>
+                        )}
+                    </div>
                 </div>
             )}
         </div>
@@ -213,7 +284,11 @@ const HistoryDisplay: React.FC<{
     scenario: Scenario;
     timeRemaining: number;
     isTimerActive: boolean;
-}> = ({ history, scenario, timeRemaining, isTimerActive }) => {
+    turnCount: number;
+    currentStats?: Stats;
+    onActionSelect?: (action: SuggestedAction) => void;
+    isLoading?: boolean;
+}> = ({ history, scenario, timeRemaining, isTimerActive, turnCount, currentStats, onActionSelect, isLoading }) => {
     // historyEndRef는 제거 - 이제 HistoryItem에서 개별 스크롤 처리
 
     return (
@@ -227,6 +302,10 @@ const HistoryDisplay: React.FC<{
                     scenario={scenario}
                     timeRemaining={timeRemaining}
                     isTimerActive={isTimerActive}
+                    turnCount={turnCount}
+                    currentStats={index === history.length - 1 ? currentStats : undefined}
+                    onActionSelect={index === history.length - 1 ? onActionSelect : undefined}
+                    isLoading={index === history.length - 1 ? isLoading : undefined}
                 />
             ))}
         </div>
@@ -291,19 +370,20 @@ const ActionInput: React.FC<{
     );
 };
 
-const GameScreen: React.FC<GameScreenProps> = ({ 
+const GameScreen: React.FC<GameScreenProps> = ({
     scenario,
-    gameState, 
-    history, 
-    isLoading, 
+    gameState,
+    history,
+    isLoading,
     onPlayerAction,
     onActionChoice,
-    onRestart, 
+    onRestart,
     error,
     timeRemaining,
     isTimerActive,
     recentStatChanges,
-    onStatChangeComplete
+    onStatChangeComplete,
+    turnCount
 }) => {
     const isGameOver = gameState?.ending_check !== '진행중';
     
@@ -365,6 +445,10 @@ const GameScreen: React.FC<GameScreenProps> = ({
                     scenario={scenario}
                     timeRemaining={timeRemaining}
                     isTimerActive={isTimerActive && !isGameOver}
+                    turnCount={turnCount}
+                    currentStats={gameState?.stats}
+                    onActionSelect={onActionChoice}
+                    isLoading={isLoading}
                 />
             )}
 
@@ -414,15 +498,16 @@ const GameScreen: React.FC<GameScreenProps> = ({
 
             {!isGameOver && (
                  <>
-                    {/* 객관식 선택지 */}
-                    {gameState?.suggested_actions && gameState.suggested_actions.length > 0 && (
+                    {/* 🆕 선택지는 이제 사이드바에 표시됨 - 기존 ActionChoice 제거 */}
+                    {/* {gameState?.suggested_actions && gameState.suggested_actions.length > 0 && (
                         <ActionChoice
                             actions={gameState.suggested_actions}
                             currentStats={gameState.stats}
                             onActionSelect={onActionChoice}
                             disabled={isLoading}
+                            scenario={scenario}
                         />
-                    )}
+                    )} */}
                     
                     {/* 자유 입력 */}
                     <div className="bg-indigo-900/50 backdrop-blur-md rounded-2xl p-4 border-2 border-purple-400/20 mb-4">
