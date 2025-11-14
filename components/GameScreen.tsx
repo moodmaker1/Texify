@@ -140,6 +140,47 @@ const HistoryItem: React.FC<{
                 </div>
             </div>
             
+            {/* 🆕 Chapter 진행도 표시 (이미지 바로 아래, 작게) */}
+            {isLatest && entry.gameState.stage_progress && !isGameOver && (
+                <div className="mb-4 bg-gradient-to-r from-indigo-900/60 to-purple-900/60 backdrop-blur-md rounded-xl px-4 py-3 border border-purple-400/30 shadow-lg shadow-purple-500/20">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                            <span className="text-lg">📖</span>
+                            <div>
+                                <p className="text-sm font-bold text-cyan-300">
+                                    Chapter {entry.gameState.stage_progress.current_stage}
+                                    {scenario === Scenario.Horror && '/5'}
+                                    {scenario === Scenario.Thriller && '/4'}
+                                    {scenario === Scenario.Romance && '/3'}
+                                    : {entry.gameState.stage_progress.stage_title}
+                                </p>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-4 text-xs">
+                            <span className="text-purple-200">
+                                목표: {entry.gameState.stage_progress.objectives_completed}/{entry.gameState.stage_progress.objectives_total}
+                            </span>
+                            <span className="text-cyan-300 font-semibold">
+                                {Math.round((entry.gameState.stage_progress.current_stage / 
+                                    (scenario === Scenario.Horror ? 5 : scenario === Scenario.Thriller ? 4 : 3)) * 100)}%
+                            </span>
+                        </div>
+                    </div>
+                    {/* 작은 진행도 바 */}
+                    <div className="mt-2">
+                        <div className="h-1.5 bg-indigo-950/60 rounded-full overflow-hidden">
+                            <div 
+                                className="h-full bg-gradient-to-r from-cyan-400 to-purple-400 rounded-full transition-all duration-500"
+                                style={{ 
+                                    width: `${(entry.gameState.stage_progress.current_stage / 
+                                        (scenario === Scenario.Horror ? 5 : scenario === Scenario.Thriller ? 4 : 3)) * 100}%` 
+                                }}
+                            />
+                        </div>
+                    </div>
+                </div>
+            )}
+            
             {/* 스토리 */}
             <div className="bg-gradient-to-br from-indigo-900/60 to-purple-900/60 backdrop-blur-md p-6 rounded-2xl text-purple-100 leading-relaxed shadow-xl shadow-purple-500/30 border-2 border-purple-400/20 mb-4">
                 {isLatest ? (
@@ -343,7 +384,7 @@ const GameScreen: React.FC<GameScreenProps> = ({
                     <span className="ml-3 text-purple-200 text-lg">
                         {scenario === Scenario.Horror && "💫 비명소리가 메아리칩니다..."}
                         {scenario === Scenario.Thriller && "💫 심장이 박동을 멈추지 않습니다..."}
-                        {scenario === Scenario.Romance && "💫 얼굴이 화끌거립니다..."}
+                        {scenario === Scenario.Romance && "💫 얼굴이 화끈거립니다..."}
                     </span>
                 </div>
             )}

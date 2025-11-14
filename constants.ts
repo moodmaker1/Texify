@@ -51,20 +51,20 @@ export const AI_MASTER_PROMPT = `
 `;
 
 export const HORROR_PROMPT = `
-## 시나리오 초기화: 403호의 전설
+## 시나리오 초기화: 거울 속의 당신
 
-제목: 403호의 전설
-장르: 호러
+제목: 거울 속의 당신
+장르: 호러 + 미스터리 + 심리 스릴러
 난이도: 중상
 
 ### 배경 설정
 - 장소: 흉가로 소문난 원룸 403호
 - 시간: 입주 첫날 밤 자정 (00:00)
-- 상황: 전 세입자들이 일주일도 못 버티고 나간 악명 높은 방입니다.
+- 특이사항: 방 안에 거울이 4개나 있고, 벽시계가 이상하게 작동합니다.
 
 ### 플레이어 설정
 - 역할: 저렴한 월세에 끌려 이사 온 새로운 세입자입니다.
-- 목표: 이 방에서 새벽 5시까지 살아남아야 합니다.
+- 목표: 이 방의 비밀을 밝히고 탈출해야 합니다.
 - 초기 상태: 방금 모든 짐을 풀고 지친 몸으로 침대에 누웠습니다.
 
 ### 스탯 정의
@@ -72,30 +72,81 @@ export const HORROR_PROMPT = `
 - 체력: 100 (0이 되면 '탈진 엔딩')
 - 공포도: 20 (100이 되면 '심장마비 엔딩')
 
-### 초기 사건
-첫 장면을 생성해주세요. 플레이어는 침대에 누워있고, 밖의 복도에서 누군가 현관문 손잡이를 조심스럽게 돌리는 소리가 들립니다.
+### 🎬 스토리 단계 시스템 (5단계)
 
-**필수: suggested_actions를 3개 포함하여 JSON으로 응답하세요.**
+**1단계: "첫 번째 밤"** (턴 1-3)
+- 목표: 이상한 현상들을 조사하라
+- 주요 이벤트: 문 손잡이 소리, 거울의 이상함, 시계 역행
+- 다음 단계 조건: 문 확인 OR 거울 조사 OR 3턴 경과
+- AI 지시: 조건 충족 시 story_stage: 2, stage_progress.can_advance: true
+
+**2단계: "루프의 발견"** (턴 4-7)
+- 목표: 시간 루프의 비밀을 파악하라
+- 주요 이벤트: 데자뷰, 전 세입자 일기 발견, 반복되는 자정
+- 다음 단계 조건: key_events에 'diary_found' 추가 OR 루프 인지
+- AI 지시: 플레이어가 루프를 눈치채면 story_stage: 3
+
+**3단계: "거울의 비밀"** (턴 8-10)
+- 목표: 거울 속 세계를 발견하라
+- 주요 이벤트: 거울 반사 지연, 거울 속 다른 자신, 평행세계 발견
+- 다음 단계 조건: 거울 통과 시도 OR key_events 3개 이상
+- AI 지시: 거울 세계 진입 시 story_stage: 4
+
+**4단계: "선택의 무게"** (턴 11-13)
+- 목표: 탈출 방법을 선택하라
+- 주요 이벤트: 다른 "나"들과 조우, 희생 요구, 진실 발견
+- 다음 단계 조건: 최종 선택 완료
+- AI 지시: 선택 후 story_stage: 5로 이동하고 ending_check 설정
+
+**5단계: "진실"** (엔딩)
+- 엔딩 분기 (key_events 확인):
+  * "각성" - 'accepted_truth' 있으면
+  * "탈출" - 'escaped_reality' 있으면
+  * "수호자" - 'stayed_behind' 있으면
+  * "루프" - 'chose_loop' 있으면
+
+### 초기 사건
+첫 장면을 생성해주세요. 플레이어는 침대에 누워있고, 밖의 복도에서 누군가 현관문 손잡이를 조심스럽게 돌리는 소리가 들립니다. 하지만 벽시계가 거꾸로 돌아가고 있고, 거울 4개가 묘하게 배치되어 있습니다.
+
+**필수 응답 형식:**
+{
+  "narrative": "...",
+  "story_stage": 1,
+  "stage_progress": {
+    "current_stage": 1,
+    "stage_title": "첫 번째 밤",
+    "objectives_completed": 0,
+    "objectives_total": 3,
+    "key_events": [],
+    "can_advance": false
+  },
+  "stats": {...},
+  "suggested_actions": [...],
+  "analysis": {...},
+  "ending_check": "진행중"
+}
+
+**중요: suggested_actions를 3개 포함하여 JSON으로 응답하세요.**
 - 2개는 안전(is_trap: false), 1개는 트랩(is_trap: true)
 - 각 선택지에 required_stats(option), stat_changes(필수) 포함
 - 트랩에는 trap_ending 포함
 `;
 
 export const THRILLER_PROMPT = `
-## 시나리오 초기화: 지하철 인질극
+## 시나리오 초기화: 열차 밖의 진실
 
-제목: 지하철 인질극
-장르: 스릴러
+제목: 열차 밖의 진실
+장르: 스릴러 + 심리전 + 미스터리
 난이도: 상
 
 ### 배경 설정
 - 장소: 2호선 지하철 내부, 꽉 찬 출근길 열차
 - 시간: 평일 아침 8시
-- 상황: 갑자기 울린 총성과 함께 무장 테러범이 등장했고, 지하철은 터널 중간에 비상 정차했습니다.
+- 특이사항: 창밖이 이상하게 어둡고, 일부 인질이 너무 침착합니다.
 
 ### 플레이어 설정
 - 역할: 다른 사람들과 마찬가지로 출근하던 평범한 직장인입니다.
-- 목표: 이 극한 상황에서 생존하고, 가능하다면 다른 인질들을 구해야 합니다.
+- 목표: 진실을 밝히고 생존해야 합니다.
 - 초기 위치: 지하철 객차 중간 좌석에 앉아있습니다.
 
 ### 스탯 정의
@@ -103,8 +154,53 @@ export const THRILLER_PROMPT = `
 - 체력: 100 (0이 되면 '부상 엔딩')
 - 긴장도: 30 (100이 되면 '실수 엔딩')
 
+### 🎬 스토리 단계 시스템 (4단계)
+
+**1단계: "인질극"** (턴 1-3)
+- 목표: 초기 충격을 극복하고 상황을 파악하라
+- 주요 이벤트: 총성, 테러범 등장, 핸드폰 회수
+- 다음 단계 조건: 정신력 60 이상 유지 + 2턴 경과
+- AI 지시: 조건 충족 시 story_stage: 2
+
+**2단계: "의심"** (턴 4-6)
+- 목표: 이상한 점들을 발견하라
+- 주요 이벤트: 옆 사람의 속삭임, 창밖 카메라, "각본" 언급
+- 다음 단계 조건: key_events에 'noticed_oddity' 추가
+- AI 지시: 리얼리티 쇼 발견 시 story_stage: 3
+
+**3단계: "역전"** (턴 7-9)
+- 목표: 진짜 위험을 식별하라
+- 주요 이벤트: 진짜 범죄자 난입, 배우 vs 진짜 구분 불가
+- 다음 단계 조건: 진실 파악 시도
+- AI 지시: 행동 개시 시 story_stage: 4
+
+**4단계: "신뢰 게임"** (턴 10+, 엔딩)
+- 엔딩 분기 (key_events 확인):
+  * "영웅" - 'saved_all' 있으면
+  * "생존자" - 'escaped_alone' 있으면
+  * "협력자" - 'joined_program' 있으면
+  * "의문" - 'questioned_reality' 있으면
+
 ### 초기 사건
-첫 장면을 생성해주세요. 지하철이 급정거하며 사람들이 넘어지고, 테러범이 천장을 향해 총을 한 발 쏘며 모두 핸드폰을 바닥에 내려놓으라고 소리칩니다.
+첫 장면을 생성해주세요. 지하철이 급정거하며 사람들이 넘어지고, 테러범이 천장을 향해 총을 한 발 쏘며 모두 핸드폰을 바닥에 내려놓으라고 소리칩니다. 하지만 창밖이 이상하게 어둡고, 몇몇 승객들이 너무 침착합니다.
+
+**필수 응답 형식:**
+{
+  "narrative": "...",
+  "story_stage": 1,
+  "stage_progress": {
+    "current_stage": 1,
+    "stage_title": "인질극",
+    "objectives_completed": 0,
+    "objectives_total": 2,
+    "key_events": [],
+    "can_advance": false
+  },
+  "stats": {...},
+  "suggested_actions": [...],
+  "analysis": {...},
+  "ending_check": "진행중"
+}
 
 **필수: suggested_actions를 3개 포함하여 JSON으로 응답하세요.**
 - 2개는 안전(is_trap: false), 1개는 트랩(is_trap: true)
@@ -113,17 +209,17 @@ export const THRILLER_PROMPT = `
 `;
 
 export const ROMANCE_PROMPT = `
-## 시나리오 초기화: 타임캡슐 재회
+## 시나리오 초기화: 시간을 거슬러 온 편지
 
-제목: 타임캡슐 재회
-장르: 로맨스
+제목: 시간을 거슬러 온 편지
+장르: 로맨스 + 판타지 + 시간 여행
 난이도: 하
 
 ### 배경 설정
 - 장소: 졸업한 고등학교 정문 앞, 오래된 벤치
 - 시간: 약속 시간 30분 전인 오후 2시 30분
 - 계절: 봄, 벚꽃이 흩날리고 있습니다.
-- 상황: 10년 전, 첫사랑과 "10년 후 오늘, 이 자리에서 다시 만나자"고 약속했던 바로 그날입니다.
+- 특이사항: 벤치에 낯선 편지가 놓여있고, 주변 사람들의 옷차림이 이상합니다.
 
 ### 플레이어 설정
 - 역할: 10년 전 첫사랑과 헤어진 28세의 직장인입니다.
@@ -135,8 +231,48 @@ export const ROMANCE_PROMPT = `
 - 호감도: 50 (0이 되면 '거절 엔딩')
 - 자신감: 80 (0이 되면 '좌절 엔딩')
 
+### 🎬 스토리 단계 시스템 (3단계)
+
+**1단계: "기다림"** (턴 1-3)
+- 목표: 마음을 정리하고 편지의 비밀을 발견하라
+- 주요 이벤트: 추억 회상, 낯선 편지 발견, 시간의 이상함
+- 다음 단계 조건: 편지 읽기 OR 용기 60 이상 + 2턴 경과
+- AI 지시: 조건 충족 시 story_stage: 2
+
+**2단계: "재회"** (턴 4-6)
+- 목표: 첫사랑과 대화하며 진실을 발견하라
+- 주요 이벤트: 첫사랑 등장, 타임 트래블 발견, 미래의 경고
+- 다음 단계 조건: key_events에 'time_travel_revealed' 추가
+- AI 지시: 시간 여행 진실 발견 시 story_stage: 3
+
+**3단계: "선택"** (턴 7+, 엔딩)
+- 목표: 시간과 사랑 사이에서 선택하라
+- 엔딩 분기 (key_events 확인):
+  * "원래의 사랑" - 'returned_to_future' 있으면
+  * "새로운 사랑" - 'changed_past' 있으면
+  * "영원한 순간" - 'stayed_in_moment' 있으면
+  * "모든 타임라인" - 'accepted_all_timelines' 있으면
+
 ### 초기 사건
-첫 장면을 생성해주세요. 플레이어는 벤치에 앉아 익숙하면서도 낯선 모교를 바라보며 10년 전의 추억을 회상하고 있습니다.
+첫 장면을 생성해주세요. 플레이어는 벤치에 앉아 익숙하면서도 낯선 모교를 바라보며 10년 전의 추억을 회상하고 있습니다. 벤치 옆에는 "2024년의 나에게"라고 적힌 낯선 편지가 놓여있고, 주변 사람들의 옷차림이 묘하게 이상합니다.
+
+**필수 응답 형식:**
+{
+  "narrative": "...",
+  "story_stage": 1,
+  "stage_progress": {
+    "current_stage": 1,
+    "stage_title": "기다림",
+    "objectives_completed": 0,
+    "objectives_total": 2,
+    "key_events": [],
+    "can_advance": false
+  },
+  "stats": {...},
+  "suggested_actions": [...],
+  "analysis": {...},
+  "ending_check": "진행중"
+}
 
 **필수: suggested_actions를 3개 포함하여 JSON으로 응답하세요.**
 - 2개는 안전(is_trap: false), 1개는 트랩(is_trap: true)
@@ -147,8 +283,8 @@ export const ROMANCE_PROMPT = `
 export const SCENARIO_DETAILS: ScenarioDetails[] = [
   {
     id: Scenario.Horror,
-    title: '403호의 전설',
-    description: '흉가로 소문난 원룸, 입주 첫날 밤. 당신은 새벽 5시까지 살아남아야 합니다.',
+    title: '거울 속의 당신',
+    description: '403호, 4개의 거울, 거꾸로 도는 시계. 당신은 이 방의 비밀을 밝히고 탈출할 수 있을까요?',
     image: '/horror-thumbnail.png',
     difficulty: '중상',
     difficultyStars: 3,
@@ -157,8 +293,8 @@ export const SCENARIO_DETAILS: ScenarioDetails[] = [
   },
   {
     id: Scenario.Thriller,
-    title: '지하철 인질극',
-    description: '출근길 지하철이 무장 테러범에게 점령당했습니다. 제한 시간 내에 생존하고 인질을 구하세요.',
+    title: '열차 밖의 진실',
+    description: '지하철 인질극... 하지만 무언가 이상합니다. 진실을 밝히고 생존하세요.',
     image: '/thriller-thumbnail.png',
     difficulty: '상',
     difficultyStars: 3,
@@ -167,8 +303,8 @@ export const SCENARIO_DETAILS: ScenarioDetails[] = [
   },
   {
     id: Scenario.Romance,
-    title: '타임캡슐 재회',
-    description: '10년 전 약속의 날, 당신은 첫사랑을 다시 만날 수 있을까요?',
+    title: '시간을 거슬러 온 편지',
+    description: '10년 전 약속의 날, 낯선 편지 한 통. 시간을 넘어선 사랑 이야기가 시작됩니다.',
     image: '/romance-thumbnail.png',
     difficulty: '하',
     difficultyStars: 1,
@@ -177,10 +313,38 @@ export const SCENARIO_DETAILS: ScenarioDetails[] = [
   },
 ];
 
+// 시나리오별 총 단계 수
+export const TOTAL_STAGES = {
+  [Scenario.Horror]: 5,
+  [Scenario.Thriller]: 4,
+  [Scenario.Romance]: 3,
+};
+
+// 시나리오별 단계 제목
+export const STAGE_TITLES = {
+  [Scenario.Horror]: ['첫 번째 밤', '루프의 발견', '거울의 비밀', '선택의 무게', '진실'],
+  [Scenario.Thriller]: ['인질극', '의심', '역전', '신뢰 게임'],
+  [Scenario.Romance]: ['기다림', '재회', '선택'],
+};
+
+// 각 단계당 최대 턴 수
+export const TURNS_PER_STAGE = 3;
+
+// 시나리오별 최대 턴 수
+export const MAX_TURNS = {
+  [Scenario.Horror]: 15,   // 5단계 × 3턴
+  [Scenario.Thriller]: 12, // 4단계 × 3턴
+  [Scenario.Romance]: 9,   // 3단계 × 3턴
+};
+
 export const GAME_PROGRESS_PROMPT = `
 ## 현재 상황
 서술: {NARRATIVE}
 스탯: {STATS}
+현재 턴: {TURN_COUNT}
+현재 단계: {CURRENT_STAGE}
+단계 제목: {STAGE_TITLE}
+주요 이벤트: {KEY_EVENTS}
 
 ## ⚠️ 중요: 상황 분석
 플레이어가 방금 "{PLAYER_ACTION}"를 했습니다. 
@@ -191,6 +355,42 @@ export const GAME_PROGRESS_PROMPT = `
 
 ## 플레이어 행동
 {PLAYER_ACTION}
+
+## 🎬 스토리 단계 진행 규칙
+1. **현재 단계의 목표 달성 조건을 확인하세요**
+2. **조건이 충족되었다면:**
+   - objectives_completed를 증가시키세요
+   - can_advance를 true로 설정하세요
+   - 다음 응답에서 story_stage를 1 증가시키세요
+   - stage_title을 다음 단계 제목으로 변경하세요
+3. **중요한 이벤트가 발생하면 key_events 배열에 추가하세요**
+   - 예: "diary_found", "mirror_entered", "truth_revealed"
+4. **턴 수 기준 자동 진행:**
+   - 3턴마다 자동으로 다음 단계로 진행됩니다
+   - 현재 턴 {TURN_COUNT}가 9~12턴이면 story_stage를 2~3 증가시키세요
+
+## ⚠️ 🎬 엔딩 규칙 (매우 중요! 반드시 준수!)
+
+### 엔딩 트리거 조건:
+1. **최종 단계 도달 (Horror: 5단계, Thriller: 4단계, Romance: 3단계)**
+2. **목표 완료 (objectives_completed >= objectives_total)**
+3. **또는 다음 턴에 무조건 엔딩**
+
+### 엔딩 시 필수 사항:
+- ✅ ending_check를 "진행중"에서 **구체적인 엔딩명**으로 변경
+- ✅ narrative에 **명확한 결말** 포함
+- ✅ suggested_actions는 **빈 배열 []** 또는 ["다시 시작하기"]
+- ✅ story_stage는 최종 단계 유지
+
+### 엔딩 종류 예시:
+- Horror: "각성 엔딩", "탈출 엔딩", "수호자 엔딩", "루프 엔딩"
+- Thriller: "진실 엔딩", "배신 엔딩", "희생 엔딩", "복수 엔딩"
+- Romance: "재회 엔딩", "이별 엔딩", "새 출발 엔딩"
+
+### ⚠️ 현재 턴이 최대 턴에 가까우면 (13턴 이상):
+**반드시 다음 턴에 엔딩을 만들어야 합니다!**
+- ending_check를 적절한 엔딩명으로 설정하세요
+- 스토리를 완결지으세요
 
 ## JSON 응답 형식
 반드시 다음 JSON 형식으로 응답하세요:
@@ -288,9 +488,40 @@ export const GAME_PROGRESS_PROMPT = `
 - 체력 0: 탈진 엔딩
 - 공포도 100: 심장마비 엔딩
 
-## 엔딩 체크
-- 목표 달성 시: ending_check에 "엔딩명"
-- 계속 진행: "진행중"
+## 🎯 엔딩 체크 규칙 (매우 중요!)
+
+### 엔딩 판단 기준:
+1. **최종 단계 도달 + 목표 달성:**
+   - Horror: story_stage가 5에 도달하면
+   - Thriller: story_stage가 4에 도달하면
+   - Romance: story_stage가 3에 도달하면
+   - key_events를 확인하여 적절한 엔딩명을 ending_check에 설정
+
+2. **진행 중:**
+   - 아직 최종 단계가 아니면 ending_check: "진행중"
+
+3. **엔딩 예시:**
+   - Horror 5단계: "각성", "탈출", "수호자", "루프"
+   - Thriller 4단계: "영웅", "생존자", "협력자", "의문"
+   - Romance 3단계: "원래의 사랑", "새로운 사랑", "영원한 순간", "모든 타임라인"
+
+### 응답 형식:
+{
+  "narrative": "...",
+  "story_stage": {CURRENT_STAGE},
+  "stage_progress": {
+    "current_stage": {CURRENT_STAGE},
+    "stage_title": "{STAGE_TITLE}",
+    "objectives_completed": 숫자,
+    "objectives_total": 숫자,
+    "key_events": ["event1", "event2"],
+    "can_advance": true/false
+  },
+  "stats": {...},
+  "suggested_actions": [...],
+  "analysis": {...},
+  "ending_check": "진행중" 또는 "엔딩명"
+}
 
 **응답은 순수 JSON만! 다른 텍스트 절대 금지!**
 `;

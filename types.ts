@@ -21,6 +21,15 @@ export interface SuggestedAction {
   };
 }
 
+export interface StageProgress {
+  current_stage: number;        // 현재 단계 (1~5)
+  stage_title: string;          // 단계 제목 ("침입자", "재회" 등)
+  objectives_completed: number; // 완료한 목표 수
+  objectives_total: number;     // 전체 목표 수
+  key_events: string[];        // 발생한 주요 이벤트
+  can_advance: boolean;        // 다음 단계 진입 가능 여부
+}
+
 export interface GameState {
   narrative: string;
   image_prompt: string;
@@ -32,6 +41,9 @@ export interface GameState {
   };
   ending_check: string;
   imageUrl?: string;
+  // 🆕 스토리 단계 시스템
+  story_stage?: number;           // 현재 스토리 단계 (1~5)
+  stage_progress?: StageProgress; // 단계별 진행 상황
 }
 
 export interface GameHistoryEntry {

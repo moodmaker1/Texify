@@ -9,29 +9,53 @@ if (!API_KEY || API_KEY === 'PLACEHOLDER_API_KEY') {
 
 const ai = new GoogleGenAI({ apiKey: API_KEY });
 
-// 재시도 헬퍼 함수
+// 재시도 헬퍼 함수 - 스토리가 꼭 나올 수 있도록 강력한 재시도
 async function retryWithBackoff<T>(
   fn: () => Promise<T>,
-  maxRetries: number = 3,
-  delay: number = 1000
+  maxRetries: number = 5,
+  delay: number = 10000
 ): Promise<T> {
   for (let i = 0; i < maxRetries; i++) {
     try {
       return await fn();
     } catch (error: any) {
       const isLastRetry = i === maxRetries - 1;
+      
+      // 재시도 가능한 에러 판별
+      const isRateLimitError = 
+        error?.status === 429 ||
+        error?.message?.includes('429') ||
+        error?.message?.includes('quota') ||
+        error?.message?.includes('RESOURCE_EXHAUSTED');
+        
       const isRetryableError = 
+        isRateLimitError ||
         error?.message?.includes('overloaded') || 
         error?.message?.includes('503') ||
         error?.message?.includes('UNAVAILABLE') ||
         error?.status === 'UNAVAILABLE';
       
-      if (isLastRetry || !isRetryableError) {
+      if (isLastRetry) {
+        console.error(`❌ ${maxRetries}회 재시도 모두 실패 - API 서버 문제일 수 있습니다`);
         throw error;
       }
       
-      // 지수 백오프: 3초, 6초, 12초...
-      const waitTime = delay * Math.pow(2, i);
+      if (!isRetryableError) {
+        console.error('❌ 재시도 불가능한 에러:', error?.message);
+        throw error;
+      }
+      
+      // 429 에러는 매우 긴 대기 시간 (RPM 제한 대응)
+      // 50초 → 100초 → 150초 → 200초 → 250초
+      const waitTime = isRateLimitError 
+        ? delay * (i + 5)  // 50초부터 시작해서 점진적 증가
+        : delay * Math.pow(2, i);  // 일반 에러는 지수 백오프
+        
+      console.log(`🔄 재시도 ${i + 1}/${maxRetries} - ${Math.floor(waitTime / 1000)}초 후 다시 시도...`);
+      if (isRateLimitError) {
+        console.log(`💡 API 속도 제한 감지 - 조금만 기다려주세요!`);
+      }
+      
       await new Promise(resolve => setTimeout(resolve, waitTime));
     }
   }
@@ -172,8 +196,47 @@ const createGameStateSchema = (scenario: Scenario) => {
         type: Type.STRING,
         description: '진행중 또는 엔딩명',
       },
+      // 🆕 스토리 단계 시스템
+      story_stage: {
+        type: Type.NUMBER,
+        description: '현재 스토리 단계 (1~5)',
+      },
+      stage_progress: {
+        type: Type.OBJECT,
+        description: '단계별 진행 상황',
+        properties: {
+          current_stage: {
+            type: Type.NUMBER,
+            description: '현재 단계',
+          },
+          stage_title: {
+            type: Type.STRING,
+            description: '단계 제목',
+          },
+          objectives_completed: {
+            type: Type.NUMBER,
+            description: '완료한 목표 수',
+          },
+          objectives_total: {
+            type: Type.NUMBER,
+            description: '전체 목표 수',
+          },
+          key_events: {
+            type: Type.ARRAY,
+            description: '발생한 주요 이벤트',
+            items: {
+              type: Type.STRING,
+            },
+          },
+          can_advance: {
+            type: Type.BOOLEAN,
+            description: '다음 단계 진입 가능 여부',
+          },
+        },
+        required: ['current_stage', 'stage_title', 'objectives_completed', 'objectives_total', 'key_events', 'can_advance'],
+      },
     },
-    required: ['narrative', 'image_prompt', 'stats', 'suggested_actions', 'analysis', 'ending_check'],
+    required: ['narrative', 'image_prompt', 'stats', 'suggested_actions', 'analysis', 'ending_check', 'story_stage', 'stage_progress'],
   };
 };
 
@@ -187,7 +250,9 @@ export async function generateGameResponse(
   userPrompt: string,
   scenario: Scenario
 ): Promise<GameState> {
-  // Flash 모델로 먼저 시도 (더 빠르고 저렴)
+  // 최대 5회 재시도, 429 에러 시 50초씩 증가하는 대기 시간
+  console.log('📖 스토리 생성 시작...');
+  
   try {
     return await retryWithBackoff(async () => {
       
@@ -216,11 +281,16 @@ export async function generateGameResponse(
       const parsedResponse = JSON.parse(cleanJsonText);
       
       return parsedResponse as GameState;
-    }, 1, 2000); // 재시도 1회로 줄임 (API 절약)
-  } catch (flashError) {
-    // Flash 실패 시 바로 오류 반환 (Pro 시도 안 함 - API 절약)
-    console.error('❌ 스토리 생성 실패:', flashError);
-    throw new Error('🔄 AI 서버가 현재 바쁩니다. 잠시 후 다시 시도해주세요.');
+    }); // 기본값 사용: 5회 재시도, 429 에러 시 50초부터 시작
+  } catch (flashError: any) {
+    console.error('❌ 스토리 생성 최종 실패:', flashError);
+    
+    // 429 에러인 경우 더 명확한 메시지
+    if (flashError?.status === 429 || flashError?.message?.includes('429') || flashError?.message?.includes('quota') || flashError?.message?.includes('RESOURCE_EXHAUSTED')) {
+      throw new Error('🚫 API 속도 제한 - 5분 정도 기다린 후 다시 시도해주세요. (또는 한국 낮 시간대에 이용)');
+    }
+    
+    throw new Error('🔄 AI 서버 오류 - 잠시 후 다시 시도해주세요.');
   }
 }
 
@@ -280,7 +350,7 @@ export async function generateImage(prompt: string, scenario: Scenario): Promise
   // 재시도 로직 포함 (2회 시도, 10초 간격)
   return await retryWithBackoff(async () => {
     try {
-      // Gemini Imagen 시도
+      // Gemini Imagen 시도 (고품질 모델)
       const response = await ai.models.generateImages({
         model: 'imagen-4.0-generate-001',
         prompt: prompt,

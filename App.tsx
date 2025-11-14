@@ -7,6 +7,8 @@ import {
   GAME_PROGRESS_PROMPT,
   TIMER_DURATION,
   TIMEOUT_ENDINGS,
+  TOTAL_STAGES,
+  STAGE_TITLES,
 } from './constants';
 import { generateGameResponse, generateImage } from './services/geminiService';
 import { soundManager } from './services/soundManager';
@@ -37,6 +39,9 @@ const App: React.FC = () => {
   const [currentGameState, setCurrentGameState] = useState<GameState | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  
+  // 🆕 턴 수 추적
+  const [turnCount, setTurnCount] = useState(0);
   
   // 스탯 변화 추적 (한 번만 표시되도록 가드)
   const [recentStatChanges, setRecentStatChanges] = useState<StatChangeInfo | null>(null);
@@ -146,6 +151,7 @@ const App: React.FC = () => {
     setRecentStatChanges(null);
     setIsShowingStatChange(false);
     setError(null);
+    setTurnCount(0); // 🆕 턴 카운트 초기화
     
     // 시나리오 설정
     setScenario(selectedScenario);
@@ -165,6 +171,21 @@ const App: React.FC = () => {
       const responseState = await generateGameResponse(newHistory, initialPrompt, selectedScenario);
       
       console.log(`✅ [${selectedScenario}] 스토리 생성 완료`);
+      
+      // 🆕 AI가 stage_progress를 반환하지 않으면 기본값 설정
+      if (!responseState.story_stage) {
+        responseState.story_stage = 1;
+      }
+      if (!responseState.stage_progress) {
+        responseState.stage_progress = {
+          current_stage: responseState.story_stage,
+          stage_title: STAGE_TITLES[selectedScenario][responseState.story_stage - 1] || '진행 중',
+          objectives_completed: 0,
+          objectives_total: 3,
+          key_events: [],
+          can_advance: false,
+        };
+      }
       
       // 2단계: 로딩 이미지로 먼저 화면 표시 (사용자는 바로 스토리를 읽을 수 있음)
       const loadingImageUrl = getPlaceholderImage(selectedScenario);
@@ -492,22 +513,113 @@ const App: React.FC = () => {
     setIsLoading(true);
     setError(null);
     
-    console.log(`🎮 [${currentScenario}] 액션 처리 시작: ${action}`);
+    // 🆕 턴 수 증가
+    const newTurnCount = turnCount + 1;
+    setTurnCount(newTurnCount);
+    
+    console.log(`🎮 [${currentScenario}] 액션 처리 시작: ${action} (턴 ${newTurnCount})`);
     
     try {
       const statsString = Object.entries(currentGameState.stats)
         .map(([key, value]) => `${key}: ${value}`)
         .join(', ');
 
+      // 🆕 Stage 정보 추가
+      const currentStage = currentGameState.story_stage || 1;
+      const stageTitle = currentGameState.stage_progress?.stage_title || '진행 중';
+      const keyEvents = currentGameState.stage_progress?.key_events?.join(', ') || '없음';
+
+      // 🆕 턴 수 기반 강제 단계 진행 계산
+      const maxTurnsPerStage = 3; // 각 단계당 최대 3턴
+      const totalStages = TOTAL_STAGES[currentScenario];
+      const maxTurns = totalStages * maxTurnsPerStage; // Horror: 15턴, Thriller: 12턴, Romance: 9턴
+      const expectedStage = Math.min(Math.floor(newTurnCount / maxTurnsPerStage) + 1, totalStages);
+      
+      // 🆕 엔딩 경고 메시지 추가
+      const turnsRemaining = maxTurns - newTurnCount;
+      const endingWarning = turnsRemaining <= 2 
+        ? `\n\n⚠️⚠️⚠️ 경고: ${turnsRemaining}턴 남음! 다음 턴에 반드시 엔딩을 만들어야 합니다! ending_check를 엔딩명으로 설정하세요! ⚠️⚠️⚠️`
+        : turnsRemaining <= 4
+        ? `\n\n⚠️ 주의: ${turnsRemaining}턴 남음! 엔딩을 준비하세요!`
+        : '';
+
       const userPrompt = GAME_PROGRESS_PROMPT
         .replace('{NARRATIVE}', currentGameState.narrative)
         .replace('{STATS}', statsString)
-        .replace('{PLAYER_ACTION}', action);
+        .replace('{TURN_COUNT}', newTurnCount.toString())
+        .replace('{CURRENT_STAGE}', currentStage.toString())
+        .replace('{STAGE_TITLE}', stageTitle)
+        .replace('{KEY_EVENTS}', keyEvents)
+        .replace('{PLAYER_ACTION}', action) + endingWarning;
 
       // 1단계: 스토리 생성
       const responseState = await generateGameResponse(gameHistory, userPrompt, currentScenario);
       
       console.log(`✅ [${currentScenario}] 다음 스토리 생성 완료`);
+      
+      // 🆕 AI가 stage_progress를 반환하지 않으면 기본값 유지 또는 설정
+      if (!responseState.story_stage && currentGameState.story_stage) {
+        // AI가 stage를 올리지 않았다면 턴 수 기반으로 강제 진행
+        responseState.story_stage = Math.max(currentGameState.story_stage, expectedStage);
+      } else if (!responseState.story_stage) {
+        responseState.story_stage = expectedStage;
+      }
+      
+      // 🆕 엔딩 로직 강화
+      const isNearEnd = newTurnCount >= maxTurns - 2; // 엔딩 2턴 전부터 경고
+      const isForcedEnding = newTurnCount >= maxTurns;
+      
+      // 1. 최대 턴 수 도달 시 무조건 엔딩
+      if (isForcedEnding) {
+        console.log(`⏰ 최대 턴 수 도달 (${newTurnCount}/${maxTurns}) - 강제 엔딩 트리거`);
+        responseState.story_stage = totalStages;
+        
+        // AI가 엔딩을 만들지 않았다면 강제로 기본 엔딩 설정
+        if (responseState.ending_check === '진행중') {
+          responseState.ending_check = '시간 초과 엔딩';
+          console.log('🎬 AI가 엔딩을 만들지 않아 기본 엔딩으로 설정');
+        }
+      }
+      
+      // 2. 최종 단계 + 목표 완료 시 엔딩
+      if (responseState.story_stage >= totalStages) {
+        const allObjectivesComplete = responseState.stage_progress?.objectives_completed >= 
+                                      (responseState.stage_progress?.objectives_total || 3);
+        
+        if (allObjectivesComplete && responseState.ending_check === '진행중') {
+          console.log('🎯 최종 단계 목표 완료 - 엔딩 강제 트리거');
+          responseState.ending_check = '목표 달성 엔딩';
+        }
+      }
+      
+      // 3. 엔딩 근처에서 AI에게 강력히 경고
+      if (isNearEnd && responseState.ending_check === '진행중') {
+        console.log(`⚠️ 엔딩 임박! (${maxTurns - newTurnCount}턴 남음) - AI가 엔딩을 준비해야 함`);
+      }
+      
+      if (!responseState.stage_progress) {
+        responseState.stage_progress = {
+          current_stage: responseState.story_stage,
+          stage_title: STAGE_TITLES[currentScenario][responseState.story_stage - 1] || '진행 중',
+          objectives_completed: 0,
+          objectives_total: 3,
+          key_events: currentGameState.stage_progress?.key_events || [],
+          can_advance: false,
+        };
+      }
+      
+      // 🆕 단계 자동 진행 로직
+      if (responseState.story_stage > currentStage) {
+        console.log(`📖 Chapter ${currentStage} → ${responseState.story_stage} 진행!`);
+        responseState.stage_progress.stage_title = STAGE_TITLES[currentScenario][responseState.story_stage - 1] || '진행 중';
+        responseState.stage_progress.current_stage = responseState.story_stage;
+      }
+      
+      // 🆕 최종 단계 도달 시 엔딩 준비
+      if (responseState.story_stage >= totalStages && responseState.ending_check === '진행중') {
+        console.log(`🎬 최종 단계 도달 - 다음 턴에 반드시 엔딩이 나와야 함`);
+        responseState.stage_progress.can_advance = true;
+      }
       
       // 2단계: 로딩 이미지로 먼저 화면 표시
       const loadingImageUrl = getPlaceholderImage(currentScenario);
@@ -590,6 +702,7 @@ const App: React.FC = () => {
     setError(null);
     setRecentStatChanges(null);
     setIsShowingStatChange(false);
+    setTurnCount(0); // 🆕 턴 카운트 초기화
     
     // 타이머 정지 및 리셋
     setIsTimerActive(false);
